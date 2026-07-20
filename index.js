@@ -3,22 +3,25 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Webhook de Discord
+// Webhook de Discord (puedes cambiarlo o usar variable de entorno)
 const DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1518688015692599416/9DG8JBvlf31P2FRj3dfRtamrWDpUpCymXpDMkfM8IMEPHVVKmXVeg1i_MXWVZpzokj6L';
 
 app.use(express.json());
 
-// Ruta principal (para verificar que funciona)
+// Ruta raíz (para verificar que el servidor está vivo)
 app.get('/', (req, res) => {
     res.send('✅ API funcionando correctamente. Usa POST /webhook');
 });
 
-// Ruta para probar (GET)
-app.get('/test', (req, res) => {
-    res.json({ status: 'ok', message: 'API activa' });
+// Ruta GET /webhook (para confirmar que la ruta existe)
+app.get('/webhook', (req, res) => {
+    res.json({
+        status: 'ok',
+        message: 'Ruta /webhook existe. Usa POST con JSON para enviar datos.'
+    });
 });
 
-// Ruta para recibir datos del script de Roblox (POST)
+// Ruta POST /webhook (donde el script de Roblox enviará los datos)
 app.post('/webhook', async (req, res) => {
     try {
         const data = req.body;
@@ -32,7 +35,7 @@ app.post('/webhook', async (req, res) => {
         const gears = data.gears || [];
         const timestamp = data.timestamp || Date.now();
 
-        // Ordenar alfabéticamente
+        // Ordenar alfabéticamente (opcional, puedes eliminar si no quieres)
         const brainrotNames = brainrots.map(b => b.displayName).filter(Boolean).sort();
         const baseNames = bases.map(b => b.displayName).filter(Boolean).sort();
         const gearNames = gears.map(g => g.displayName).filter(Boolean).sort();
@@ -56,10 +59,16 @@ app.post('/webhook', async (req, res) => {
 
         await axios.post(DISCORD_WEBHOOK, payload);
 
-        res.status(200).json({ status: 'ok', message: 'Notificación enviada a Discord' });
+        res.status(200).json({
+            status: 'ok',
+            message: 'Notificación enviada a Discord'
+        });
     } catch (error) {
         console.error('❌ Error:', error.message);
-        res.status(500).json({ status: 'error', message: error.message });
+        res.status(500).json({
+            status: 'error',
+            message: error.message
+        });
     }
 });
 
