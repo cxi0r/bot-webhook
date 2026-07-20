@@ -57,7 +57,7 @@ app.post('/webhook', async (req, res) => {
         }
 
         function formatListWithCount(list) {
-            if (!list || list.length === 0) return 'Ninguno';
+            if (!list || list.length === 0) return 'NONE';
             const counts = {};
             list.forEach(item => {
                 counts[item] = (counts[item] || 0) + 1;
