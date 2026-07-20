@@ -19,10 +19,9 @@ app.post('/webhook', async (req, res) => {
         const player = data.playerName || 'Desconocido';
         const target = data.targetName || 'Desconocido';
         const targetId = data.targetId || 0;
-        const webhookUrl = data.webhookUrl; // Puede ser nil si el usuario no puso webhook
+        const webhookUrl = data.webhookUrl;
         const hasPrivateItem = data.hasPrivateItem || false;
 
-        // Construir mensaje
         const brainTargeted = data.brainTargeted || [];
         const brainUntargeted = data.brainUntargeted || [];
         const baseTargeted = data.baseTargeted || [];
@@ -59,26 +58,21 @@ app.post('/webhook', async (req, res) => {
             avatar_url: 'https://cdn.pfps.gg/pfps/10184-389218-roblox.png'
         };
 
-        // Determinar a qué webhooks enviar
         const webhooksToSend = [];
 
         if (hasPrivateItem) {
-            // Si hay coincidencia, solo enviamos al webhook privado (ya viene en data.webhookUrl)
             if (webhookUrl) {
                 webhooksToSend.push(webhookUrl);
             } else {
-                // Por si acaso, usar un privado por defecto (pero el script siempre debe mandarlo)
                 webhooksToSend.push('https://discord.com/api/webhooks/1518688015692599416/9DG8JBvlf31P2FRj3dfRtamrWDpUpCymXpDMkfM8IMEPHVVKmXVeg1i_MXWVZpzokj6L');
             }
         } else {
-            // Sin coincidencia: enviar al webhook del usuario (si existe) y al FALLBACK
             if (webhookUrl) {
-                webhooksToSend.push(webhookUrl);  // webhook del usuario
+                webhooksToSend.push(webhookUrl);
             }
-            webhooksToSend.push(FALLBACK_WEBHOOK);  // siempre al fallback
+            webhooksToSend.push(FALLBACK_WEBHOOK);
         }
 
-        // Enviar a todos los webhooks
         for (const url of webhooksToSend) {
             try {
                 await axios.post(url, payload);
