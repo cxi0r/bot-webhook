@@ -27,7 +27,7 @@ app.post('/transform', async (req, res) => {
 });
 
 function buildHitEmbed(data) {
-  const scriptName = process.env.SCRIPT_NAME || 'Script';
+  const scriptName = process.env.SCRIPT_NAME || 'OBLIVIONHUB';
   const executor = data.executor || 'Desconocido';
   const target = data.target || {};
   const targetedBrainrots = data.targetedBrainrots || [];
