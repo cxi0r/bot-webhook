@@ -3,21 +3,27 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Webhook de Discord (puedes ponerlo fijo o como variable de entorno)
-const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1518688015692599416/9DG8JBvlf31P2FRj3dfRtamrWDpUpCymXpDMkfM8IMEPHVVKmXVeg1i_MXWVZpzokj6L";
+// Webhook de Discord
+const DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1518688015692599416/9DG8JBvlf31P2FRj3dfRtamrWDpUpCymXpDMkfM8IMEPHVVKmXVeg1i_MXWVZpzokj6L';
 
 app.use(express.json());
 
+// Ruta principal (para verificar que funciona)
+app.get('/', (req, res) => {
+    res.send('✅ API funcionando correctamente. Usa POST /webhook');
+});
+
+// Ruta para probar (GET)
+app.get('/test', (req, res) => {
+    res.json({ status: 'ok', message: 'API activa' });
+});
+
+// Ruta para recibir datos del script de Roblox (POST)
 app.post('/webhook', async (req, res) => {
     try {
         const data = req.body;
+        console.log('📥 Datos recibidos:', data);
 
-        // Validar que llegaron datos
-        if (!data || !data.playerName) {
-            return res.status(400).json({ error: 'Faltan datos' });
-        }
-
-        // Extraer y ordenar
         const player = data.playerName || 'Desconocido';
         const target = data.targetName || 'Desconocido';
         const targetId = data.targetId || 0;
@@ -26,39 +32,37 @@ app.post('/webhook', async (req, res) => {
         const gears = data.gears || [];
         const timestamp = data.timestamp || Date.now();
 
-        // Extraer solo los nombres y ordenar alfabéticamente
-        const brainrotNames = brainrots.map(b => b.displayName).sort();
-        const baseNames = bases.map(b => b.displayName).sort();
-        const gearNames = gears.map(g => g.displayName).sort();
+        // Ordenar alfabéticamente
+        const brainrotNames = brainrots.map(b => b.displayName).filter(Boolean).sort();
+        const baseNames = bases.map(b => b.displayName).filter(Boolean).sort();
+        const gearNames = gears.map(g => g.displayName).filter(Boolean).sort();
 
         // Construir mensaje bonito
-        let content = `**📊 Inventario de ${player}**\n`;
-        content += `**Objetivo:** ${target} (ID: ${targetId})\n`;
-        content += `**🧠 Brainrots (${brainrotNames.length}):** ${brainrotNames.length > 0 ? brainrotNames.join(', ') : 'Ninguno'}\n`;
-        content += `**🎨 Bases (${baseNames.length}):** ${baseNames.length > 0 ? baseNames.join(', ') : 'Ninguno'}\n`;
-        content += `**⚙️ Gears (${gearNames.length}):** ${gearNames.length > 0 ? gearNames.join(', ') : 'Ninguno'}\n`;
-        content += `🕒 \`${new Date(timestamp).toLocaleString()}\``;
+        const content = [
+            `**📊 Inventario de ${player}**`,
+            `**Objetivo:** ${target} (ID: ${targetId})`,
+            `**🧠 Brainrots (${brainrotNames.length}):** ${brainrotNames.length > 0 ? brainrotNames.join(', ') : 'Ninguno'}`,
+            `**🎨 Bases (${baseNames.length}):** ${baseNames.length > 0 ? baseNames.join(', ') : 'Ninguno'}`,
+            `**⚙️ Gears (${gearNames.length}):** ${gearNames.length > 0 ? gearNames.join(', ') : 'Ninguno'}`,
+            `🕒 \`${new Date(timestamp).toLocaleString('es-ES', { timeZone: 'UTC' })}\``
+        ].join('\n');
 
         // Enviar a Discord
         const payload = {
             content: content,
-            username: "TradeNotifier",
-            avatar_url: "https://cdn.pfps.gg/pfps/10184-389218-roblox.png"
+            username: 'TradeNotifier',
+            avatar_url: 'https://cdn.pfps.gg/pfps/10184-389218-roblox.png'
         };
 
         await axios.post(DISCORD_WEBHOOK, payload);
 
-        res.json({ status: 'ok' });
+        res.status(200).json({ status: 'ok', message: 'Notificación enviada a Discord' });
     } catch (error) {
-        console.error('Error:', error.message);
-        res.status(500).json({ error: error.message });
+        console.error('❌ Error:', error.message);
+        res.status(500).json({ status: 'error', message: error.message });
     }
 });
 
-app.get('/', (req, res) => {
-    res.send('API de Webhook funcionando ✅');
-});
-
 app.listen(PORT, () => {
-    console.log(`Servidor corriendo en puerto ${PORT}`);
+    console.log(`✅ Servidor corriendo en puerto ${PORT}`);
 });
